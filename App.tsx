@@ -878,9 +878,10 @@ type StaffRecord = {
 
 function UserManagement({ onBack }: { onBack: () => void }) {
   const [activeTab, setActiveTab] = useState<'Pending' | 'Staff' | 'Suppliers'>('Pending');
-  const [pending, setPending] = useState<Array<{ initials: string; name: string; role: string; request: string; date: string; tone: string }>>([]);
+  const [pending, setPending] = useState<Array<{ id?: string; initials: string; name: string; role: string; request: string; date: string; tone: string; supplierId?: string }>>([]);
   const [staff, setStaff] = useState<StaffRecord[]>([]);
   const [suppliers, setSuppliers] = useState<Array<{ initials: string; name: string; category: string; status: string }>>([]);
+  const [supplierProfiles, setSupplierProfiles] = useState<SupplierProfile[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
@@ -892,10 +893,12 @@ function UserManagement({ onBack }: { onBack: () => void }) {
       loadOwnerCollection('pendingRequests', []),
       loadOwnerCollection<StaffRecord[]>('staff', []),
       loadOwnerCollection('suppliers', []),
-    ]).then(([savedPending, savedStaff, savedSuppliers]) => {
+      loadOwnerCollection<SupplierProfile[]>('supplierProfiles', []),
+    ]).then(([savedPending, savedStaff, savedSuppliers, savedSupplierProfiles]) => {
       setPending(savedPending);
       setStaff(savedStaff);
       setSuppliers(savedSuppliers);
+      setSupplierProfiles(savedSupplierProfiles);
     }).finally(() => setUsersLoaded(true));
   }, []);
   useEffect(() => {
@@ -904,10 +907,12 @@ function UserManagement({ onBack }: { onBack: () => void }) {
         loadOwnerCollection('pendingRequests', []),
         loadOwnerCollection<StaffRecord[]>('staff', []),
         loadOwnerCollection('suppliers', []),
-      ]).then(([savedPending, savedStaff, savedSuppliers]) => {
+        loadOwnerCollection<SupplierProfile[]>('supplierProfiles', []),
+      ]).then(([savedPending, savedStaff, savedSuppliers, savedSupplierProfiles]) => {
         setPending(savedPending);
         setStaff(savedStaff);
         setSuppliers(savedSuppliers);
+        setSupplierProfiles(savedSupplierProfiles);
       });
     }, 3000);
     return () => clearInterval(timer);
@@ -917,8 +922,9 @@ function UserManagement({ onBack }: { onBack: () => void }) {
       void saveOwnerCollection('pendingRequests', pending);
       void saveOwnerCollection('staff', staff);
       void saveOwnerCollection('suppliers', suppliers);
+      void saveOwnerCollection('supplierProfiles', supplierProfiles);
     }
-  }, [pending, staff, suppliers, usersLoaded]);
+  }, [pending, staff, suppliers, supplierProfiles, usersLoaded]);
   const [supplierSearch, setSupplierSearch] = useState('');
   const visibleSuppliers = suppliers.filter((supplier) =>
     `${supplier.name} ${supplier.category}`.toLowerCase().includes(supplierSearch.toLowerCase()),
@@ -926,12 +932,14 @@ function UserManagement({ onBack }: { onBack: () => void }) {
   const approveRequest = (request: (typeof pending)[number]) => {
     setPending((items) => items.filter((item) => item.name !== request.name));
     if (request.role === 'Vendor') {
-      setSuppliers((items) => [...items, {
-        initials: request.initials,
-        name: request.name,
-        category: request.request,
-        status: 'Verified',
-      }]);
+      if (request.supplierId) {
+        setSupplierProfiles((items) => items.map((profile) => profile.id === request.supplierId
+          ? { ...profile, status: 'Verified' }
+          : profile));
+      }
+      setSuppliers((items) => items.map((supplier) => supplier.name === request.name
+        ? { ...supplier, status: 'Verified' }
+        : supplier));
       Alert.alert('Supplier approved', `${request.name} is now an approved supplier.`);
     } else {
       const newStaff: StaffRecord = {
@@ -1036,7 +1044,18 @@ function UserManagement({ onBack }: { onBack: () => void }) {
             <Pressable style={styles.approveButton} onPress={() => approveRequest(request)}>
               <Text style={styles.approveText}>✓ Approve</Text>
             </Pressable>
-            <Pressable style={styles.rejectButton} onPress={() => { setPending((items) => items.filter((item) => item.name !== request.name)); Alert.alert('Request rejected', `${request.name}'s request was rejected.`); }}>
+            <Pressable style={styles.rejectButton} onPress={() => {
+              setPending((items) => items.filter((item) => item.name !== request.name));
+              if (request.role === 'Vendor' && request.supplierId) {
+                setSupplierProfiles((items) => items.map((profile) => profile.id === request.supplierId
+                  ? { ...profile, status: 'Rejected' }
+                  : profile));
+                setSuppliers((items) => items.map((supplier) => supplier.name === request.name
+                  ? { ...supplier, status: 'Rejected' }
+                  : supplier));
+              }
+              Alert.alert('Request rejected', `${request.name}'s request was rejected.`);
+            }}>
               <Text style={styles.rejectText}>× Reject</Text>
             </Pressable>
           </View>

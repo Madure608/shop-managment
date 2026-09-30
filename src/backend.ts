@@ -108,6 +108,29 @@ export async function registerSupplier(profile: SupplierProfile): Promise<void> 
     throw new Error('A supplier account with this email already exists.');
   }
   await saveOwnerCollection('supplierProfiles', [...profiles, profile]);
+  const pendingRequests = await loadOwnerCollection<Array<{
+    id: string;
+    initials: string;
+    name: string;
+    role: string;
+    request: string;
+    date: string;
+    tone: string;
+    supplierId: string;
+  }>>('pendingRequests', []);
+  await saveOwnerCollection('pendingRequests', [
+    ...pendingRequests,
+    {
+      id: profile.id,
+      initials: profile.businessName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase(),
+      name: profile.businessName,
+      role: 'Vendor',
+      request: 'Supplier registration',
+      date: new Date(profile.createdAt).toLocaleDateString(),
+      tone: 'orange',
+      supplierId: profile.id,
+    },
+  ]);
   const suppliers = await loadOwnerCollection<Array<{ initials: string; name: string; category: string; status: string }>>('suppliers', []);
   await saveOwnerCollection('suppliers', [
     ...suppliers,
@@ -142,6 +165,11 @@ export async function signInSupplier(email: string, password: string): Promise<S
   }
   if (!profile || profile.password !== password) {
     throw new Error('Supplier account not found or password is incorrect.');
+  }
+  if (profile.status !== 'Verified') {
+    throw new Error(profile.status === 'Pending'
+      ? 'Your supplier registration is still pending owner approval.'
+      : 'Your supplier registration was rejected by the owner.');
   }
   await AsyncStorage.setItem(localKey('supplier-signed-in'), profile.id);
   return profile;
